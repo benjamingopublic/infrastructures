@@ -41,3 +41,31 @@ def test_simresult_fields():
     )
     assert r.total_travel_time_s == 90.0
     assert r.n_arrived == 1
+
+
+def test_routes_single_edge():
+    net = tiny_net()
+    routes = compute_free_flow_routes(net, [(0, 1)])
+    assert len(routes) == 1
+    assert routes[0].tolist() == [0]
+
+
+def test_routes_two_edges():
+    net = two_edge_net()
+    routes = compute_free_flow_routes(net, [(0, 2)])
+    assert len(routes) == 1
+    assert routes[0].tolist() == [0, 1]
+
+
+def test_routes_unreachable_returns_empty():
+    net = tiny_net()  # only edge is 0->1; no path 1->0
+    with pytest.warns(UserWarning, match="no path"):
+        routes = compute_free_flow_routes(net, [(1, 0)])
+    assert len(routes[0]) == 0
+
+
+def test_routes_multiple_trips_grouped_by_origin():
+    net = two_edge_net()
+    routes = compute_free_flow_routes(net, [(0, 1), (0, 2)])
+    assert routes[0].tolist() == [0]
+    assert routes[1].tolist() == [0, 1]
