@@ -140,3 +140,21 @@ def test_two_edge_route():
 
     assert sim.arrived[0]
     assert sim.arrival_step[0] == 3
+
+
+def test_capacity_queuing():
+    """
+    3 vehicles depart simultaneously on an edge with send_capacity=1/step.
+    Without capacity enforcement all three arrive at step 1.
+    With enforcement they arrive at steps 1, 2, 3.
+    """
+    net = tiny_net()   # send_capacity = max(1, int(120*30/3600)) = 1
+    routes = compute_free_flow_routes(net, [(0, 1)] * 3)
+    sim = QueueSim(net, routes, np.array([0, 0, 0]))
+
+    for t in range(10):
+        sim.step(t)
+
+    assert sim.arrived.all()
+    arrivals = sorted(sim.arrival_step.tolist())
+    assert arrivals == [1, 2, 3]

@@ -97,7 +97,10 @@ class QueueSim:
         """
         Advance simulation by one DT-second step.
         Returns edge_occupancy[E] — the RL observation.
-        Capacity enforcement is not yet applied (added in next iteration).
+
+        Capacity is enforced per edge: at most send_capacity[e] vehicles
+        may exit edge e per step. Excess vehicles wait one step (FIFO order
+        by exit_step — earliest-waiting gets priority).
         """
         # 1. Release vehicles scheduled for this step.
         depart = (self.departure_step == t) & ~self.started
@@ -106,23 +109,54 @@ class QueueSim:
             self.exit_step[depart] = t + self.edge_steps[self.current_edge[depart]]
             self.started[depart] = True
 
-        # 2. Advance all vehicles whose edge traversal is complete.
+        # 2. Find vehicles whose edge traversal is nominally complete.
         pending = np.where(self.started & ~self.arrived & (self.exit_step <= t))[0]
 
         if len(pending) > 0:
-            self.route_pos[pending] += 1
-            fin_mask = self.route_pos[pending] >= self.route_lengths[pending]
-            finished = pending[fin_mask]
-            continuing = pending[~fin_mask]
+            # 3. FIFO capacity enforcement.
+            #    Sort by (current_edge, exit_step) so vehicles are grouped by edge
+            #    and, within each group, earliest exit_step (longest-waiting) goes first.
+            p_edges = self.current_edge[pending]
+            p_exit = self.exit_step[pending]
+            order = np.lexsort((p_exit, p_edges))  # primary: edge; secondary: exit_step
+            ps = pending[order]
+            es = p_edges[order]
 
-            if len(finished) > 0:
-                self.arrived[finished] = True
-                self.arrival_step[finished] = t
+            # Compute each vehicle's rank within its edge group.
+            unique_edges, g_starts, g_counts = np.unique(
+                es, return_index=True, return_counts=True
+            )
+            rank = np.empty(len(ps), dtype=np.int32)
+            for start, count in zip(g_starts, g_counts):
+                rank[start : start + count] = np.arange(count, dtype=np.int32)
 
-            if len(continuing) > 0:
-                new_edges = self.routes[continuing, self.route_pos[continuing]]
-                self.current_edge[continuing] = new_edges
-                self.exit_step[continuing] = t + self.edge_steps[new_edges]
+            cap = self.send_capacity[es]
+            adv_mask = rank < cap
+
+            can_advance = ps[adv_mask]
+            blocked = ps[~adv_mask]
+
+            # 4. Advance vehicles that cleared capacity.
+            if len(can_advance) > 0:
+                self.route_pos[can_advance] += 1
+                fin_mask = (
+                    self.route_pos[can_advance] >= self.route_lengths[can_advance]
+                )
+                finished = can_advance[fin_mask]
+                continuing = can_advance[~fin_mask]
+
+                if len(finished) > 0:
+                    self.arrived[finished] = True
+                    self.arrival_step[finished] = t
+
+                if len(continuing) > 0:
+                    new_edges = self.routes[continuing, self.route_pos[continuing]]
+                    self.current_edge[continuing] = new_edges
+                    self.exit_step[continuing] = t + self.edge_steps[new_edges]
+
+            # 5. Delay blocked vehicles — they retry next step.
+            if len(blocked) > 0:
+                self.exit_step[blocked] = t + 1
 
         occ = self._edge_occupancy()
         self._max_queue = np.maximum(self._max_queue, occ)
