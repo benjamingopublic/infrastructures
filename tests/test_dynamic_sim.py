@@ -69,3 +69,32 @@ def test_routes_multiple_trips_grouped_by_origin():
     routes = compute_free_flow_routes(net, [(0, 1), (0, 2)])
     assert routes[0].tolist() == [0]
     assert routes[1].tolist() == [0, 1]
+
+
+def test_init_precomputed_edge_arrays():
+    net = tiny_net()  # t0=[30.0], capacity=[120.0]
+    routes = compute_free_flow_routes(net, [(0, 1)])
+    sim = QueueSim(net, routes, np.array([0]))
+    # edge_steps = max(1, round(30/30)) = 1
+    assert sim.edge_steps[0] == 1
+    # send_capacity = max(1, int(120 * 30 / 3600)) = max(1, 1) = 1
+    assert sim.send_capacity[0] == 1
+
+
+def test_init_routes_padded():
+    net = two_edge_net()
+    routes = compute_free_flow_routes(net, [(0, 2), (0, 1)])
+    sim = QueueSim(net, routes, np.array([0, 0]))
+    assert sim.routes.shape == (2, 2)       # 2 vehicles, max_route_len=2
+    assert sim.route_lengths[0] == 2        # trip 0->2 uses both edges
+    assert sim.route_lengths[1] == 1        # trip 0->1 uses only edge 0
+
+
+def test_reset_zeroes_mutable_state():
+    net = tiny_net()
+    routes = compute_free_flow_routes(net, [(0, 1)])
+    sim = QueueSim(net, routes, np.array([0]))
+    sim.reset()
+    assert not sim.started[0]
+    assert not sim.arrived[0]
+    assert sim.current_edge[0] == -1

@@ -18,8 +18,80 @@ class SimResult:
 
 
 class QueueSim:
-    """Dynamic queue simulator. To be implemented."""
-    pass
+    """
+    Discrete-vehicle mesoscopic queue simulator.
+
+    Vehicles carry pre-computed routes (edge-index sequences).
+    Each call to step(t) advances the simulation by one DT-second timestep.
+    """
+
+    def __init__(
+        self,
+        net: Network,
+        routes: list[np.ndarray],
+        departure_steps: np.ndarray,
+    ) -> None:
+        V = len(routes)
+
+        # Precomputed per-edge arrays (immutable after init).
+        self.edge_steps = np.maximum(1, np.round(net.t0 / DT).astype(np.int32))
+        self.send_capacity = np.maximum(
+            1, (net.capacity * DT / 3600).astype(np.int32)
+        )
+        self.n_edges = net.n_edges
+
+        # Per-vehicle immutable data.
+        route_lengths = np.array([len(r) for r in routes], dtype=np.int32)
+        max_len = int(route_lengths.max()) if V > 0 else 1
+        routes_padded = np.full((V, max_len), -1, dtype=np.int32)
+        for i, r in enumerate(routes):
+            if len(r) > 0:
+                routes_padded[i, : len(r)] = r
+
+        free_flow_time_s = np.array(
+            [net.t0[r].sum() if len(r) > 0 else 0.0 for r in routes],
+            dtype=np.float64,
+        )
+
+        self.routes = routes_padded
+        self.route_lengths = route_lengths
+        self.departure_step = np.asarray(departure_steps, dtype=np.int32)
+        self.free_flow_time_s = free_flow_time_s
+        self.n_vehicles = V
+
+        # Mutable state — initialised by reset().
+        self.route_pos: np.ndarray
+        self.current_edge: np.ndarray
+        self.exit_step: np.ndarray
+        self.started: np.ndarray
+        self.arrived: np.ndarray
+        self.arrival_step: np.ndarray
+        self._max_queue: np.ndarray
+        self.reset()
+
+    def reset(self) -> np.ndarray:
+        """Reset mutable state. Returns initial edge occupancy (all zeros)."""
+        V = self.n_vehicles
+        self.route_pos = np.zeros(V, dtype=np.int32)
+        self.current_edge = np.full(V, -1, dtype=np.int32)
+        self.exit_step = np.full(V, 10**7, dtype=np.int32)
+        self.started = np.zeros(V, dtype=bool)
+        self.arrived = np.zeros(V, dtype=bool)
+        self.arrival_step = np.zeros(V, dtype=np.int32)
+        self._max_queue = np.zeros(self.n_edges, dtype=np.int32)
+        return self._edge_occupancy()
+
+    def _edge_occupancy(self) -> np.ndarray:
+        active = self.started & ~self.arrived
+        if not active.any():
+            return np.zeros(self.n_edges, dtype=np.int32)
+        return np.bincount(
+            self.current_edge[active], minlength=self.n_edges
+        ).astype(np.int32)
+
+    @property
+    def done(self) -> bool:
+        return bool(np.all(self.arrived))
 
 
 def compute_free_flow_routes(
