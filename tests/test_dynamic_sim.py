@@ -158,3 +158,53 @@ def test_capacity_queuing():
     assert sim.arrived.all()
     arrivals = sorted(sim.arrival_step.tolist())
     assert arrivals == [1, 2, 3]
+
+
+def test_mass_conservation():
+    """Every vehicle must arrive by end of a sufficiently long episode."""
+    net = tiny_net()   # send_capacity=1/step
+    n = 10
+    routes = compute_free_flow_routes(net, [(0, 1)] * n)
+    # 10 vehicles all departing step 0; capacity=1/step needs at least 10 steps
+    sim = QueueSim(net, routes, np.zeros(n, dtype=np.int32))
+    result = sim.run(n_steps=50)
+    assert result.n_arrived == n
+
+
+def test_zero_delay_no_congestion():
+    """Single vehicle on high-capacity edge: delay must be zero."""
+    net = Network(
+        edge_from=[0], edge_to=[1],
+        t0=[30.0], capacity=[100_000.0],
+        n_nodes=2,
+    )
+    routes = compute_free_flow_routes(net, [(0, 1)])
+    sim = QueueSim(net, routes, np.array([0]))
+    result = sim.run(n_steps=10)
+    # travel_time = 1 step * 30s = 30s; free_flow_time = 30s; delay = 0
+    assert result.total_delay_s == pytest.approx(0.0, abs=1.0)
+    assert result.n_arrived == 1
+
+
+def test_delay_increases_with_congestion():
+    """Peak departures produce more delay than spread departures."""
+    net = tiny_net()   # send_capacity=1/step creates congestion
+    n = 6
+    routes = compute_free_flow_routes(net, [(0, 1)] * n)
+
+    peak_sim = QueueSim(net, routes, np.zeros(n, dtype=np.int32))
+    peak = peak_sim.run(n_steps=30)
+
+    spread_sim = QueueSim(net, routes, np.arange(n, dtype=np.int32))
+    spread = spread_sim.run(n_steps=30)
+
+    assert peak.total_delay_s > spread.total_delay_s
+
+
+def test_simresult_max_queue():
+    """max_queue_per_edge must record the worst congestion seen."""
+    net = tiny_net()
+    routes = compute_free_flow_routes(net, [(0, 1)] * 5)
+    sim = QueueSim(net, routes, np.zeros(5, dtype=np.int32))
+    result = sim.run(n_steps=20)
+    assert result.max_queue_per_edge[0] >= 1

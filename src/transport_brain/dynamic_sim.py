@@ -162,6 +162,35 @@ class QueueSim:
         self._max_queue = np.maximum(self._max_queue, occ)
         return occ
 
+    def get_result(self) -> SimResult:
+        """
+        Build SimResult from current state.
+        Always call run() before get_result() — run() caps arrival_step
+        for non-arrived vehicles so travel times are finite.
+        """
+        tt = float(np.sum((self.arrival_step - self.departure_step) * DT))
+        delay = tt - float(self.free_flow_time_s.sum())
+        return SimResult(
+            total_travel_time_s=tt,
+            total_delay_s=delay,
+            max_queue_per_edge=self._max_queue.copy(),
+            arrival_steps=self.arrival_step.copy(),
+            n_arrived=int(self.arrived.sum()),
+        )
+
+    def run(self, n_steps: int = 240) -> SimResult:
+        """Run a full episode and return metrics. Resets state first."""
+        self.reset()
+        for t in range(n_steps):
+            self.step(t)
+            if self.done:
+                break
+        # Cap non-arrived vehicles so get_result() travel times are finite.
+        not_arrived = ~self.arrived
+        if not_arrived.any():
+            self.arrival_step[not_arrived] = n_steps
+        return self.get_result()
+
 
 def compute_free_flow_routes(
     net: Network, trips: list[tuple[int, int]]
