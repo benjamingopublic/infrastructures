@@ -208,3 +208,40 @@ def test_simresult_max_queue():
     sim = QueueSim(net, routes, np.zeros(5, dtype=np.int32))
     result = sim.run(n_steps=20)
     assert result.max_queue_per_edge[0] >= 1
+
+
+def test_cph_scale_performance():
+    """
+    4000 vehicles on the real Copenhagen network must complete in under 1 second.
+    Skipped automatically if data/cph.graphml is not present.
+    """
+    import os
+    from transport_brain.network import load_network, make_rush_hour_demand
+
+    graphml = os.path.normpath(
+        os.path.join(os.path.dirname(__file__), "..", "data", "cph.graphml")
+    )
+    if not os.path.exists(graphml):
+        pytest.skip("data/cph.graphml not found — skipping scale test")
+
+    net, node_ids, node_xy, attractors = load_network(graphml)
+    demand = make_rush_hour_demand(net, node_xy, attractors, n_trips=4000, seed=42)
+    trips = list(demand.keys())
+
+    # Spread departures across 1-hour window to avoid extreme queues.
+    rng = np.random.default_rng(42)
+    departure_steps = rng.integers(0, 120, size=len(trips), dtype=np.int32)
+
+    routes = compute_free_flow_routes(net, trips)
+    sim = QueueSim(net, routes, departure_steps)
+
+    t0 = time.perf_counter()
+    result = sim.run(n_steps=240)
+    elapsed = time.perf_counter() - t0
+
+    print(f"\nCPH scale: {len(trips)} vehicles, {elapsed:.3f}s")
+    print(f"  arrived={result.n_arrived}/{len(trips)}")
+    print(f"  total_delay={result.total_delay_s / 3600:.1f} veh-hours")
+
+    assert elapsed < 1.0, f"Episode took {elapsed:.2f}s — target <1s"
+    assert result.n_arrived > len(trips) * 0.95, "Too many vehicles stuck"

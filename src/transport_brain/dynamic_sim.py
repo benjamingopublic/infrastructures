@@ -85,9 +85,12 @@ class QueueSim:
         active = self.started & ~self.arrived
         if not active.any():
             return np.zeros(self.n_edges, dtype=np.int32)
-        return np.bincount(
-            self.current_edge[active], minlength=self.n_edges
-        ).astype(np.int32)
+        edges = self.current_edge[active]
+        # Guard: ignore any vehicle whose current_edge is still -1 (safety net).
+        edges = edges[edges >= 0]
+        if len(edges) == 0:
+            return np.zeros(self.n_edges, dtype=np.int32)
+        return np.bincount(edges, minlength=self.n_edges).astype(np.int32)
 
     @property
     def done(self) -> bool:
@@ -105,9 +108,18 @@ class QueueSim:
         # 1. Release vehicles scheduled for this step.
         depart = (self.departure_step == t) & ~self.started
         if depart.any():
-            self.current_edge[depart] = self.routes[depart, 0]
-            self.exit_step[depart] = t + self.edge_steps[self.current_edge[depart]]
-            self.started[depart] = True
+            # Vehicles with empty routes (no path found) arrive immediately.
+            depart_idx = np.where(depart)[0]
+            no_route = depart_idx[self.route_lengths[depart_idx] == 0]
+            has_route = depart_idx[self.route_lengths[depart_idx] > 0]
+            if len(no_route) > 0:
+                self.started[no_route] = True
+                self.arrived[no_route] = True
+                self.arrival_step[no_route] = t
+            if len(has_route) > 0:
+                self.current_edge[has_route] = self.routes[has_route, 0]
+                self.exit_step[has_route] = t + self.edge_steps[self.current_edge[has_route]]
+                self.started[has_route] = True
 
         # 2. Find vehicles whose edge traversal is nominally complete.
         pending = np.where(self.started & ~self.arrived & (self.exit_step <= t))[0]
