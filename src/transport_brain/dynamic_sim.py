@@ -93,6 +93,41 @@ class QueueSim:
     def done(self) -> bool:
         return bool(np.all(self.arrived))
 
+    def step(self, t: int) -> np.ndarray:
+        """
+        Advance simulation by one DT-second step.
+        Returns edge_occupancy[E] — the RL observation.
+        Capacity enforcement is not yet applied (added in next iteration).
+        """
+        # 1. Release vehicles scheduled for this step.
+        depart = (self.departure_step == t) & ~self.started
+        if depart.any():
+            self.current_edge[depart] = self.routes[depart, 0]
+            self.exit_step[depart] = t + self.edge_steps[self.current_edge[depart]]
+            self.started[depart] = True
+
+        # 2. Advance all vehicles whose edge traversal is complete.
+        pending = np.where(self.started & ~self.arrived & (self.exit_step <= t))[0]
+
+        if len(pending) > 0:
+            self.route_pos[pending] += 1
+            fin_mask = self.route_pos[pending] >= self.route_lengths[pending]
+            finished = pending[fin_mask]
+            continuing = pending[~fin_mask]
+
+            if len(finished) > 0:
+                self.arrived[finished] = True
+                self.arrival_step[finished] = t
+
+            if len(continuing) > 0:
+                new_edges = self.routes[continuing, self.route_pos[continuing]]
+                self.current_edge[continuing] = new_edges
+                self.exit_step[continuing] = t + self.edge_steps[new_edges]
+
+        occ = self._edge_occupancy()
+        self._max_queue = np.maximum(self._max_queue, occ)
+        return occ
+
 
 def compute_free_flow_routes(
     net: Network, trips: list[tuple[int, int]]

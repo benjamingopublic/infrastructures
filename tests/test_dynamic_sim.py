@@ -98,3 +98,45 @@ def test_reset_zeroes_mutable_state():
     assert not sim.started[0]
     assert not sim.arrived[0]
     assert sim.current_edge[0] == -1
+
+
+def test_single_vehicle_arrives():
+    """One vehicle, one 30s edge: arrives at departure_step + edge_steps = 0 + 1 = 1."""
+    net = tiny_net()
+    routes = compute_free_flow_routes(net, [(0, 1)])
+    sim = QueueSim(net, routes, np.array([0]))
+
+    for t in range(10):
+        sim.step(t)
+
+    assert sim.arrived[0]
+    assert sim.arrival_step[0] == 1
+
+
+def test_departure_offset():
+    """Vehicle departing at step 5 on a 1-step edge arrives at step 6."""
+    net = tiny_net()
+    routes = compute_free_flow_routes(net, [(0, 1)])
+    sim = QueueSim(net, routes, np.array([5]))
+
+    for t in range(10):
+        sim.step(t)
+
+    assert sim.arrived[0]
+    assert sim.arrival_step[0] == 6
+
+
+def test_two_edge_route():
+    """
+    Single vehicle, two edges: edge 0 = 30s (1 step), edge 1 = 60s (2 steps).
+    Departs step 0, exits edge 0 at step 1, exits edge 1 at step 3.
+    """
+    net = two_edge_net()
+    routes = compute_free_flow_routes(net, [(0, 2)])
+    sim = QueueSim(net, routes, np.array([0]))
+
+    for t in range(10):
+        sim.step(t)
+
+    assert sim.arrived[0]
+    assert sim.arrival_step[0] == 3
