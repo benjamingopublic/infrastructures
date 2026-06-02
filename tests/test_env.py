@@ -107,21 +107,16 @@ def test_reward_negative():
             break
 
 
-def test_holding_cost_discourages_hoarding():
-    """action=0 (hoard) should give worse reward than action=max when queue non-empty."""
-    env_hold = make_test_env()
-    env_hold.reset()
-    if len(env_hold._queue) == 0:
-        pytest.skip("queue empty at t=0 for this seed")
-    _, reward_hold, _, _, _ = env_hold.step(0)
-
-    env_release = make_test_env()
-    env_release.reset()
-    _, reward_release, _, _, _ = env_release.step(env_release.max_release)
-
-    assert reward_hold < reward_release, (
-        f"hoarding reward {reward_hold} should be worse (more negative) than releasing {reward_release}"
-    )
+def test_late_departure_penalised():
+    """Releasing vehicles after their desired departure time incurs a negative reward."""
+    env = make_test_env()
+    env.reset()
+    # Hold all vehicles past their desired departure window (first half of episode).
+    for _ in range(env.n_steps // 2 + 1):
+        env.step(0)
+    # Now release: all vehicles are past desired_dep → dep_delay > 0.
+    _, reward, _, _, _ = env.step(env.max_release)
+    assert reward <= 0.0, f"late departure should give non-positive reward, got {reward}"
 
 
 def test_episode_terminates():

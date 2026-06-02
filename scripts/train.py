@@ -48,7 +48,6 @@ def make_env(seed=0):
             n_trips=4000,
             n_steps=240,
             max_release=20,
-            wait_coeff=0.01,
             seed=seed,
             obs_mode="compact",
         )
