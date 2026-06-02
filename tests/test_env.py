@@ -1,5 +1,7 @@
 import numpy as np
 import pytest
+import shutil
+import tempfile
 import matplotlib
 matplotlib.use("Agg")  # non-interactive backend for tests
 from transport_brain.sim import Network
@@ -143,3 +145,17 @@ def test_render_rgb_array_shape():
     assert frame.shape[2] == 3
     assert frame.dtype == np.uint8
     env.close()
+
+
+def test_record_episode_creates_file():
+    if shutil.which("ffmpeg") is None:
+        pytest.skip("ffmpeg not installed")
+    from transport_brain.env import record_episode
+    env = make_test_env(render_mode="rgb_array")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = f"{tmpdir}/test_episode.mp4"
+        result = record_episode(env, lambda obs: 3, path=path)
+        import os
+        assert os.path.exists(path)
+        assert os.path.getsize(path) > 0
+        assert result is not None

@@ -223,5 +223,54 @@ class CommuteEnv(gym.Env):
             self._axes = None
 
 
-def record_episode(env: CommuteEnv, policy_fn, path: str = "episode.mp4") -> SimResult:
-    raise NotImplementedError
+def record_episode(
+    env: CommuteEnv,
+    policy_fn,
+    path: str = "episode.mp4",
+) -> SimResult:
+    import matplotlib.animation as animation
+
+    obs, _ = env.reset()
+    frames = []
+    terminated = truncated = False
+
+    while not (terminated or truncated):
+        frame = env.render()
+        if frame is not None:
+            frames.append(frame)
+        action = policy_fn(obs)
+        obs, _, terminated, truncated, _ = env.step(action)
+
+    # Capture final frame after last step.
+    frame = env.render()
+    if frame is not None:
+        frames.append(frame)
+
+    # Build SimResult from final sim state.
+    sim = env._sim
+    not_arrived = ~sim.arrived
+    if not_arrived.any():
+        sim.arrival_step[not_arrived] = env.n_steps
+    result = sim.get_result()
+
+    # Write video.
+    if frames:
+        h, w, _ = frames[0].shape
+        fig, ax = plt.subplots(figsize=(w / 72, h / 72), dpi=72)
+        ax.axis("off")
+        fig.subplots_adjust(0, 0, 1, 1)
+        im = ax.imshow(frames[0])
+
+        def update(frame_data):
+            im.set_data(frame_data)
+            return [im]
+
+        writer = animation.FFMpegWriter(fps=10)
+        anim = animation.FuncAnimation(
+            fig, update, frames=frames, interval=100, blit=True
+        )
+        anim.save(path, writer=writer)
+        plt.close(fig)
+
+    env.close()
+    return result
