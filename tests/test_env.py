@@ -147,6 +147,14 @@ def test_render_rgb_array_shape():
     env.close()
 
 
+def test_gymnasium_api_compliance():
+    from gymnasium.utils.env_checker import check_env
+    env = make_test_env()
+    # skip_render_check because we need Agg backend for headless tests
+    check_env(env, warn=True, skip_render_check=True)
+    env.close()
+
+
 def test_record_episode_creates_file():
     if shutil.which("ffmpeg") is None:
         pytest.skip("ffmpeg not installed")
