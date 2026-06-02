@@ -180,6 +180,19 @@ Install with: `pip install -e ".[rl]"`
 
 ---
 
+## Visual Verification Script
+
+`scripts/visualize_episode.py` — not a test, a manual inspection tool:
+1. Load Copenhagen network via `load_network("data/cph.graphml")`
+2. Build `CommuteEnv` with default params and seed=0
+3. Run one episode with a fixed policy (always release 10 vehicles/step)
+4. Call `record_episode(env, policy_fn, "outputs/episode.mp4")`
+5. Print: total delay (veh-hours), n_arrived, elapsed wall time
+
+Visual correctness is confirmed by watching the output video: edges should be blue at episode start, turn yellow/red during the congestion peak, and return to blue as vehicles arrive.
+
+---
+
 ## What This Is Not
 
 - **Not a training script** — `env.py` is the environment only. Training with SB3/CleanRL is a separate script outside this spec.
