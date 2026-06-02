@@ -95,7 +95,6 @@ class CommuteEnv(gym.Env):
         # 5. Create QueueSim with NEVER sentinel (no vehicle auto-departs).
         departure_steps = np.full(self.n_trips, self.n_steps + 100, dtype=np.int32)
         self._sim = QueueSim(self.net, routes, departure_steps)
-        self._sim.reset()
 
         # 6. Store trips for zone lookup on release.
         self._trips = trips
