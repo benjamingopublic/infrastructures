@@ -87,8 +87,9 @@ class CommuteEnv(gym.Env):
 
         routes = compute_free_flow_routes(self.net, trips)
 
-        # 2. Assign desired departure steps (uniform in first half of episode).
-        self._desired_dep = rng.integers(0, self.n_steps // 2 + 1, size=self.n_trips).astype(np.int32)
+        # 2. Assign desired departure steps (uniform over full episode).
+        # Demand rate ~17/step; max_release=20 so the agent can keep up.
+        self._desired_dep = rng.integers(0, self.n_steps, size=self.n_trips).astype(np.int32)
 
         # 3. Build FIFO queue sorted by desired departure step.
         order = np.argsort(self._desired_dep, kind="stable")
