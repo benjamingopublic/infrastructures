@@ -29,3 +29,22 @@ def test_import():
     import gymnasium as gym
     env = make_test_env()
     assert isinstance(env, gym.Env)
+
+
+def test_spaces_defined():
+    import gymnasium as gym
+    env = make_test_env()
+    assert isinstance(env.action_space, gym.spaces.Discrete)
+    assert env.action_space.n == 6  # max_release=5, so 0..5
+    assert isinstance(env.observation_space, gym.spaces.Box)
+    assert env.observation_space.shape == (12,)  # 2 edges + 10 scalars
+    assert env.observation_space.dtype == np.float32
+
+
+def test_zone_precompute():
+    env = make_test_env()
+    # _node_zone must be set and contain values 0-7
+    assert hasattr(env, '_node_zone')
+    assert env._node_zone.shape == (3,)  # 3 nodes in tiny net
+    assert env._node_zone.min() >= 0
+    assert env._node_zone.max() <= 7

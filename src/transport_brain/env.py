@@ -34,7 +34,34 @@ class CommuteEnv(gym.Env):
         self.max_release = int(max_release)
         self.wait_coeff = float(wait_coeff)
         self.max_expected_occ = float(max_expected_occ)
+        self._init_seed = seed
         self.render_mode = render_mode
+
+        self.action_space = gym.spaces.Discrete(max_release + 1)
+        obs_dim = net.n_edges + 10
+        self.observation_space = gym.spaces.Box(
+            low=0.0, high=np.inf, shape=(obs_dim,), dtype=np.float32
+        )
+
+        # Precompute 8-zone ring assignment (distance from centroid).
+        centroid = self.node_xy.mean(axis=0)
+        dists = np.linalg.norm(self.node_xy - centroid, axis=1)
+        max_dist = dists.max()
+        self._node_zone = np.floor(
+            dists / (max_dist + 1e-9) * 8
+        ).astype(np.int32).clip(0, 7)
+
+        # Mutable state (set by reset)
+        self._sim: QueueSim | None = None
+        self._queue: deque[int] = deque()
+        self._desired_dep: np.ndarray | None = None
+        self._t: int = 0
+        self._prev_arrived: np.ndarray | None = None
+        self._last_occ: np.ndarray | None = None
+        self._zone_counts: np.ndarray = np.zeros(8, dtype=np.int32)
+        self._trips: list | None = None
+        self._fig = None
+        self._axes = None
 
     def reset(self, *, seed=None, options=None):
         raise NotImplementedError
