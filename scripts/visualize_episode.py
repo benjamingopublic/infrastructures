@@ -11,7 +11,7 @@ from transport_brain.env import CommuteEnv, record_episode
 
 os.makedirs("outputs", exist_ok=True)
 
-net, node_xy, attractors = load_network("data/cph.graphml")
+net, _node_ids, node_xy, attractors = load_network("data/cph.graphml")
 env = CommuteEnv(
     net=net,
     node_xy=node_xy,
