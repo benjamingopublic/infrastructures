@@ -48,3 +48,28 @@ def test_zone_precompute():
     assert env._node_zone.shape == (3,)  # 3 nodes in tiny net
     assert env._node_zone.min() >= 0
     assert env._node_zone.max() <= 7
+
+
+def test_reset_returns_valid_obs():
+    env = make_test_env()
+    obs, info = env.reset()
+    assert obs.shape == (12,)
+    assert obs.dtype == np.float32
+    assert not np.isnan(obs).any()
+    assert not np.isinf(obs).any()
+    assert obs.min() >= 0.0
+
+
+def test_reset_info_keys():
+    env = make_test_env()
+    _, info = env.reset()
+    for key in ("n_queued", "n_in_transit", "n_arrived", "step"):
+        assert key in info, f"missing key: {key}"
+
+
+def test_zone_histogram_sums_to_n_queued():
+    env = make_test_env()
+    obs, info = env.reset()
+    n_queued = info["n_queued"]
+    zone_sum = obs[env.net.n_edges:env.net.n_edges + 8].sum() * env.n_trips
+    assert abs(zone_sum - n_queued) < 1.0  # float32 rounding tolerance

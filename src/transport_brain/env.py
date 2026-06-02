@@ -64,7 +64,65 @@ class CommuteEnv(gym.Env):
         self._axes = None
 
     def reset(self, *, seed=None, options=None):
-        raise NotImplementedError
+        super().reset(seed=seed)
+        episode_seed = seed if seed is not None else self._init_seed
+        rng = np.random.default_rng(episode_seed)
+
+        # 1. Generate trips and routes.
+        demand = make_rush_hour_demand(self.net, self.node_xy, self.attractors, self.n_trips, seed=episode_seed)
+        trips: list[tuple[int, int]] = []
+        for (o, d), qty in demand.items():
+            trips.extend([(o, d)] * int(qty))
+        trips = trips[: self.n_trips]
+        while len(trips) < self.n_trips:
+            trips.append(trips[rng.integers(len(trips))])
+
+        routes = compute_free_flow_routes(self.net, trips)
+
+        # 2. Assign desired departure steps (uniform in first half of episode).
+        self._desired_dep = rng.integers(0, self.n_steps // 2 + 1, size=self.n_trips).astype(np.int32)
+
+        # 3. Build FIFO queue sorted by desired departure step.
+        order = np.argsort(self._desired_dep, kind="stable")
+        self._queue = deque(int(v) for v in order)
+
+        # 4. Build zone counts for queued vehicles.
+        self._zone_counts = np.zeros(8, dtype=np.int32)
+        for v in self._queue:
+            origin_node = trips[v][0]
+            self._zone_counts[self._node_zone[origin_node]] += 1
+
+        # 5. Create QueueSim with NEVER sentinel (no vehicle auto-departs).
+        departure_steps = np.full(self.n_trips, self.n_steps + 100, dtype=np.int32)
+        self._sim = QueueSim(self.net, routes, departure_steps)
+        self._sim.reset()
+
+        # 6. Store trips for zone lookup on release.
+        self._trips = trips
+
+        self._t = 0
+        self._prev_arrived = np.zeros(self.n_trips, dtype=bool)
+        self._last_occ = np.zeros(self.net.n_edges, dtype=np.int32)
+
+        return self._make_obs(), self._make_info()
+
+    def _make_obs(self) -> np.ndarray:
+        obs = np.empty(self.net.n_edges + 10, dtype=np.float32)
+        obs[:self.net.n_edges] = self._last_occ / self.max_expected_occ
+        obs[self.net.n_edges: self.net.n_edges + 8] = self._zone_counts / self.n_trips
+        obs[self.net.n_edges + 8] = len(self._queue) / self.n_trips
+        obs[self.net.n_edges + 9] = self._t / self.n_steps
+        return obs
+
+    def _make_info(self) -> dict:
+        n_arrived = int(self._sim.arrived.sum()) if self._sim is not None else 0
+        n_in_transit = int((self._sim.started & ~self._sim.arrived).sum()) if self._sim is not None else 0
+        return {
+            "n_queued": len(self._queue),
+            "n_in_transit": n_in_transit,
+            "n_arrived": n_arrived,
+            "step": self._t,
+        }
 
     def step(self, action):
         raise NotImplementedError
