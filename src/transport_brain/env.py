@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import io
 import numpy as np
 import gymnasium as gym
 from collections import deque
+
+import matplotlib.pyplot as plt
+from matplotlib.collections import LineCollection
 
 from transport_brain.sim import Network
 from transport_brain.dynamic_sim import QueueSim, SimResult, compute_free_flow_routes, DT
@@ -152,11 +156,73 @@ class CommuteEnv(gym.Env):
         terminated = (self._t >= self.n_steps) or bool(self._sim.done and len(self._queue) == 0)
         return self._make_obs(), float(reward), terminated, False, self._make_info()
 
-    def render(self):
-        raise NotImplementedError
+    def render(self, mode: str = "human"):
+        if self._sim is None:
+            return None
+
+        if self._fig is None:
+            self._fig, self._axes = plt.subplots(1, 2, figsize=(12, 5))
+            self._fig.tight_layout(pad=2.0)
+
+        ax_net, ax_bar = self._axes
+        ax_net.clear()
+        ax_bar.clear()
+
+        # Left panel: road network coloured by load (occupancy / send_capacity).
+        occ = self._last_occ if self._last_occ is not None else np.zeros(self.net.n_edges)
+        send_cap = np.maximum(1, (self.net.capacity * DT / 3600).astype(np.int32))
+        load = np.clip(occ / send_cap, 0, 1)
+
+        segs = []
+        colors = []
+        for e in range(self.net.n_edges):
+            u = int(self.net.edge_from[e])
+            v = int(self.net.edge_to[e])
+            segs.append([self.node_xy[u], self.node_xy[v]])
+            r, g, b = float(load[e]), float(1.0 - load[e]), 0.0
+            colors.append((r, g, b, 0.8))
+
+        lc = LineCollection(segs, colors=colors, linewidths=1.0)
+        ax_net.add_collection(lc)
+        ax_net.autoscale()
+        ax_net.set_aspect("equal")
+        ax_net.set_title(f"Step {self._t}/{self.n_steps}")
+        ax_net.axis("off")
+
+        # Right panel: queue bar + stats.
+        frac = len(self._queue) / max(self.n_trips, 1)
+        ax_bar.bar([0], [frac], color="steelblue")
+        ax_bar.set_ylim(0, 1)
+        ax_bar.set_xticks([])
+        ax_bar.set_ylabel("Queue fraction")
+        ax_bar.set_title(f"Queued: {len(self._queue)}")
+
+        self._fig.canvas.draw()
+
+        if mode == "rgb_array":
+            try:
+                from PIL import Image
+                buf = io.BytesIO()
+                self._fig.savefig(buf, format="png", dpi=72)
+                buf.seek(0)
+                img = np.array(Image.open(buf).convert("RGB"))
+                buf.close()
+            except ImportError:
+                self._fig.canvas.draw()
+                w, h = self._fig.canvas.get_width_height()
+                buf_raw = np.frombuffer(self._fig.canvas.tostring_rgb(), dtype=np.uint8)
+                img = buf_raw.reshape(h, w, 3)
+            return img
+        elif mode == "human":
+            plt.pause(0.001)
+            return None
+        return None
 
     def close(self):
-        raise NotImplementedError
+        if self._fig is not None:
+            plt.close(self._fig)
+            self._fig = None
+            self._axes = None
 
 
 def record_episode(env: CommuteEnv, policy_fn, path: str = "episode.mp4") -> SimResult:

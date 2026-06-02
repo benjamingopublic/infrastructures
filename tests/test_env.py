@@ -1,5 +1,7 @@
 import numpy as np
 import pytest
+import matplotlib
+matplotlib.use("Agg")  # non-interactive backend for tests
 from transport_brain.sim import Network
 from transport_brain.env import CommuteEnv
 
@@ -128,3 +130,15 @@ def test_episode_terminates():
             break
     assert terminated or truncated, "episode did not terminate"
     assert step_num < env.n_steps + 5
+
+
+def test_render_rgb_array_shape():
+    env = make_test_env()
+    env.reset()
+    env.step(0)
+    frame = env.render("rgb_array")
+    assert frame is not None
+    assert frame.ndim == 3
+    assert frame.shape[2] == 3
+    assert frame.dtype == np.uint8
+    env.close()
