@@ -62,6 +62,7 @@ class CommuteEnv(gym.Env):
         self._sim: QueueSim | None = None
         self._queue: deque[int] = deque()
         self._desired_dep: np.ndarray | None = None
+        self._released: np.ndarray | None = None
         self._t: int = 0
         self._prev_arrived: np.ndarray | None = None
         self._last_occ: np.ndarray | None = None
@@ -107,6 +108,7 @@ class CommuteEnv(gym.Env):
         self._trips = trips
 
         self._t = 0
+        self._released = np.zeros(self.n_trips, dtype=bool)
         self._prev_arrived = np.zeros(self.n_trips, dtype=bool)
         self._last_occ = np.zeros(self.net.n_edges, dtype=np.int32)
 
@@ -139,18 +141,21 @@ class CommuteEnv(gym.Env):
     def step(self, action: int):
         assert self._sim is not None, "call reset() before step()"
         n_release = min(int(action), len(self._queue))
-        dep_delay_s = 0.0
         for _ in range(n_release):
             v = self._queue.popleft()
             self._sim.departure_step[v] = self._t
+            self._released[v] = True
             origin_node = self._trips[v][0]
             self._zone_counts[self._node_zone[origin_node]] -= 1
-            # Penalise late departure relative to the vehicle's desired time.
-            dep_delay_s += max(0, self._t - int(self._desired_dep[v])) * DT
 
         self._last_occ = self._sim.step(self._t)
 
-        # Travel delay for vehicles that arrived this step.
+        # Cost 1: vehicles still in queue past their desired departure time.
+        # Computed after release so the action immediately reduces this cost.
+        n_late = int(np.sum((self._desired_dep <= self._t) & ~self._released))
+        late_cost = n_late / self.n_trips
+
+        # Cost 2: travel delay for vehicles that arrived this step.
         new_arrived_mask = self._sim.arrived & ~self._prev_arrived
         travel_delay_s = 0.0
         if new_arrived_mask.any():
@@ -160,8 +165,7 @@ class CommuteEnv(gym.Env):
                 np.sum(travel_steps * DT - self._sim.free_flow_time_s[idx])
             )
 
-        # Reward normalised to [-1, 0] range (approximately).
-        reward = -(dep_delay_s + travel_delay_s) / (DT * self.n_trips)
+        reward = -(late_cost + travel_delay_s / (DT * self.n_trips))
 
         self._prev_arrived = self._sim.arrived.copy()
         self._t += 1
