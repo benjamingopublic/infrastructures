@@ -48,6 +48,7 @@ def make_env(seed=0):
             n_trips=4000,
             n_steps=240,
             max_release=20,
+            wait_coeff=0.01,
             seed=seed,
             obs_mode="compact",
         )
@@ -94,7 +95,7 @@ def evaluate(model, vec_env, n_episodes=3):
 
 
 def naive_baseline(n_episodes=3):
-    """Run the constant release-10 policy; return mean delay in veh-hours."""
+    """Run release-17/step (serves all 4000 trips); return mean delay in veh-hours."""
     net, _node_ids, node_xy, attractors = load_network("data/cph.graphml")
     delays = []
     for ep in range(n_episodes):
@@ -105,7 +106,7 @@ def naive_baseline(n_episodes=3):
         obs, _ = env.reset()
         terminated = truncated = False
         while not (terminated or truncated):
-            obs, _, terminated, truncated, _ = env.step(10)
+            obs, _, terminated, truncated, _ = env.step(17)
         delays.append(_episode_delay_veh_hours(env, env.n_steps))
     return float(np.mean(delays))
 
@@ -142,7 +143,7 @@ if __name__ == "__main__":
     # Measure naive baseline first so we have a target.
     print("Computing naive baseline (3 episodes)…")
     baseline_delay = naive_baseline(n_episodes=3)
-    print(f"  Naive policy (release 10/step): {baseline_delay:.1f} veh-hours delay\n")
+    print(f"  Naive policy (release 17/step, all trips served): {baseline_delay:.1f} veh-hours delay\n")
 
     print(f"Building {N_ENVS} parallel envs…")
     vec_env = DummyVecEnv([make_env(seed=i) for i in range(N_ENVS)])
