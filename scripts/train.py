@@ -38,6 +38,10 @@ VECNORM_PATH = "outputs/vecnorm.pkl"
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+N_TRIPS = 8000
+MAX_RELEASE = 50
+
+
 def make_env(seed=0):
     net, _node_ids, node_xy, attractors = load_network("data/cph.graphml")
     def _init():
@@ -45,9 +49,9 @@ def make_env(seed=0):
             net=net,
             node_xy=node_xy,
             attractors=attractors,
-            n_trips=4000,
+            n_trips=N_TRIPS,
             n_steps=240,
-            max_release=20,
+            max_release=MAX_RELEASE,
             seed=seed,
             obs_mode="compact",
         )
@@ -81,7 +85,7 @@ def evaluate(model, vec_env, n_episodes=3):
     for ep in range(n_episodes):
         env = CommuteEnv(
             net=net, node_xy=node_xy, attractors=attractors,
-            n_trips=4000, n_steps=240, max_release=20, seed=EVAL_SEEDS[ep],
+            n_trips=N_TRIPS, n_steps=240, max_release=MAX_RELEASE, seed=EVAL_SEEDS[ep],
             obs_mode="compact",
         )
         obs, _ = env.reset()
@@ -99,19 +103,23 @@ def evaluate(model, vec_env, n_episodes=3):
     return float(np.mean(delays)), float(np.mean(mean_actions))
 
 
+# Naive: release at the minimum steady rate that serves all trips in one episode.
+NAIVE_ACTION = int(np.ceil(N_TRIPS / 240))
+
+
 def naive_baseline(n_episodes=3):
-    """Run release-17/step on EVAL_SEEDS; return mean delay in veh-hours."""
+    """Run constant release (ceil(n_trips/n_steps)); return mean delay in veh-hours."""
     net, _node_ids, node_xy, attractors = load_network("data/cph.graphml")
     delays = []
     for ep in range(n_episodes):
         env = CommuteEnv(
             net=net, node_xy=node_xy, attractors=attractors,
-            n_trips=4000, n_steps=240, max_release=20, seed=EVAL_SEEDS[ep],
+            n_trips=N_TRIPS, n_steps=240, max_release=MAX_RELEASE, seed=EVAL_SEEDS[ep],
         )
         obs, _ = env.reset()
         terminated = truncated = False
         while not (terminated or truncated):
-            obs, _, terminated, truncated, _ = env.step(17)
+            obs, _, terminated, truncated, _ = env.step(NAIVE_ACTION)
         delays.append(_episode_delay_veh_hours(env, env.n_steps))
     return float(np.mean(delays))
 
@@ -148,7 +156,7 @@ if __name__ == "__main__":
     # Measure naive baseline first so we have a target.
     print("Computing naive baseline (3 episodes)…")
     baseline_delay = naive_baseline(n_episodes=3)
-    print(f"  Naive policy (release 17/step, all trips served): {baseline_delay:.1f} veh-hours delay\n")
+    print(f"  Naive policy (release {NAIVE_ACTION}/step, all trips served): {baseline_delay:.1f} veh-hours delay\n")
 
     print(f"Building {N_ENVS} parallel envs…")
     vec_env = DummyVecEnv([make_env(seed=i) for i in range(N_ENVS)])
@@ -184,7 +192,7 @@ if __name__ == "__main__":
     # Evaluate trained agent on same seeds as naive baseline.
     print("\nEvaluating trained agent (3 episodes)…")
     trained_delay, mean_action = evaluate(model, vec_env, n_episodes=3)
-    print(f"  Naive policy:   {baseline_delay:.1f} veh-hours  (action=17 always)")
+    print(f"  Naive policy:   {baseline_delay:.1f} veh-hours  (action={NAIVE_ACTION} always)")
     print(f"  Trained agent:  {trained_delay:.1f} veh-hours  (mean action={mean_action:.1f})")
     if trained_delay < baseline_delay:
         pct = (baseline_delay - trained_delay) / baseline_delay * 100

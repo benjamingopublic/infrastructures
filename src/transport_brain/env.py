@@ -58,6 +58,11 @@ class CommuteEnv(gym.Env):
             dists / (max_dist + 1e-9) * 8
         ).astype(np.int32).clip(0, 7)
 
+        # Precompute send capacity per edge (vehicles / timestep).
+        self._send_cap = np.maximum(
+            (net.capacity * DT / 3600).astype(np.float32), 1.0
+        )
+
         # Mutable state (set by reset)
         self._sim: QueueSim | None = None
         self._queue: deque[int] = deque()
@@ -156,17 +161,13 @@ class CommuteEnv(gym.Env):
         n_late = int(np.sum((self._desired_dep <= self._t) & ~self._released))
         late_cost = n_late / self.n_trips
 
-        # Cost 2: travel delay for vehicles that arrived this step.
-        new_arrived_mask = self._sim.arrived & ~self._prev_arrived
-        travel_delay_s = 0.0
-        if new_arrived_mask.any():
-            idx = np.where(new_arrived_mask)[0]
-            travel_steps = self._sim.arrival_step[idx] - self._sim.departure_step[idx]
-            travel_delay_s = float(
-                np.sum(travel_steps * DT - self._sim.free_flow_time_s[idx])
-            )
+        # Cost 2: immediate edge-load penalty — mean squared occupancy / send-capacity.
+        # Gives the agent real-time feedback that overloading the network is costly,
+        # without waiting for vehicles to arrive.
+        edge_load = self._last_occ.astype(np.float32) / self._send_cap
+        congestion_cost = float(np.mean(edge_load ** 2))
 
-        reward = -(late_cost + travel_delay_s / (DT * self.n_trips))
+        reward = -(late_cost + congestion_cost)
 
         self._prev_arrived = self._sim.arrived.copy()
         self._t += 1
