@@ -246,12 +246,27 @@ def record_episode(
     if frame is not None:
         frames.append(frame)
 
-    # Build SimResult from final sim state.
+    # Build SimResult from final sim state — only count vehicles that actually departed.
+    # Vehicles still in queue have departure_step = NEVER sentinel (n_steps+100), which
+    # would produce negative travel times if naively included.
     sim = env._sim
-    not_arrived = ~sim.arrived
-    if not_arrived.any():
-        sim.arrival_step[not_arrived] = env.n_steps
-    result = sim.get_result()
+    started_not_arrived = sim.started & ~sim.arrived
+    if started_not_arrived.any():
+        sim.arrival_step[started_not_arrived] = env.n_steps
+
+    mask = sim.started
+    if mask.any():
+        tt = float(np.sum((sim.arrival_step[mask] - sim.departure_step[mask]) * DT))
+        delay = tt - float(sim.free_flow_time_s[mask].sum())
+    else:
+        tt = delay = 0.0
+    result = SimResult(
+        total_travel_time_s=tt,
+        total_delay_s=delay,
+        max_queue_per_edge=sim._max_queue.copy(),
+        arrival_steps=sim.arrival_step.copy(),
+        n_arrived=int(sim.arrived.sum()),
+    )
 
     # Write video.
     if frames:
