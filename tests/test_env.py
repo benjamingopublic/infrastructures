@@ -73,3 +73,58 @@ def test_zone_histogram_sums_to_n_queued():
     n_queued = info["n_queued"]
     zone_sum = obs[env.net.n_edges:env.net.n_edges + 8].sum() * env.n_trips
     assert abs(zone_sum - n_queued) < 1.0  # float32 rounding tolerance
+
+
+def test_action_zero_releases_nothing():
+    env = make_test_env()
+    env.reset()
+    n_before = len(env._queue)
+    env.step(0)
+    assert len(env._queue) == n_before
+
+
+def test_action_max_drains_queue():
+    env = make_test_env()
+    env.reset()
+    n_before = len(env._queue)
+    obs, reward, terminated, truncated, info = env.step(env.max_release)
+    released = n_before - len(env._queue)
+    assert released == min(env.max_release, n_before)
+
+
+def test_reward_negative():
+    env = make_test_env()
+    env.reset()
+    for _ in range(5):
+        obs, reward, terminated, truncated, info = env.step(env.max_release)
+        assert reward <= 0.0, f"reward={reward} should be <= 0"
+        if terminated:
+            break
+
+
+def test_holding_cost_discourages_hoarding():
+    """action=0 (hoard) should give worse reward than action=max when queue non-empty."""
+    env_hold = make_test_env()
+    env_hold.reset()
+    if len(env_hold._queue) == 0:
+        pytest.skip("queue empty at t=0 for this seed")
+    _, reward_hold, _, _, _ = env_hold.step(0)
+
+    env_release = make_test_env()
+    env_release.reset()
+    _, reward_release, _, _, _ = env_release.step(env_release.max_release)
+
+    assert reward_hold < reward_release, (
+        f"hoarding reward {reward_hold} should be worse (more negative) than releasing {reward_release}"
+    )
+
+
+def test_episode_terminates():
+    env = make_test_env()
+    env.reset()
+    for step_num in range(env.n_steps + 10):
+        _, _, terminated, truncated, _ = env.step(env.max_release)
+        if terminated or truncated:
+            break
+    assert terminated or truncated, "episode did not terminate"
+    assert step_num < env.n_steps + 5

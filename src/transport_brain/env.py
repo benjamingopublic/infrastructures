@@ -123,8 +123,34 @@ class CommuteEnv(gym.Env):
             "step": self._t,
         }
 
-    def step(self, action):
-        raise NotImplementedError
+    def step(self, action: int):
+        assert self._sim is not None, "call reset() before step()"
+        n_release = min(int(action), len(self._queue))
+        for _ in range(n_release):
+            v = self._queue.popleft()
+            self._sim.departure_step[v] = self._t
+            origin_node = self._trips[v][0]
+            self._zone_counts[self._node_zone[origin_node]] -= 1
+
+        self._last_occ = self._sim.step(self._t)
+
+        # Reward: delay cost for newly-arrived vehicles + holding cost.
+        new_arrived_mask = self._sim.arrived & ~self._prev_arrived
+        delay_cost = 0.0
+        if new_arrived_mask.any():
+            idx = np.where(new_arrived_mask)[0]
+            travel_steps = self._sim.arrival_step[idx] - self._sim.departure_step[idx]
+            delay_cost = float(
+                np.sum(travel_steps * DT - self._sim.free_flow_time_s[idx])
+            )
+        holding_cost = len(self._queue)
+        reward = -(delay_cost / DT + self.wait_coeff * holding_cost) / self.n_trips
+
+        self._prev_arrived = self._sim.arrived.copy()
+        self._t += 1
+
+        terminated = (self._t >= self.n_steps) or bool(self._sim.done and len(self._queue) == 0)
+        return self._make_obs(), float(reward), terminated, False, self._make_info()
 
     def render(self):
         raise NotImplementedError
