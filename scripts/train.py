@@ -71,36 +71,42 @@ def _episode_delay_veh_hours(env, n_steps):
     return delay_s / 3600
 
 
+EVAL_SEEDS = [200, 201, 202]  # shared by both naive and trained for fair comparison
+
+
 def evaluate(model, vec_env, n_episodes=3):
-    """Run n_episodes on a fresh single env with the trained policy."""
+    """Run n_episodes with the trained policy; return (mean_delay, mean_action)."""
     net, _node_ids, node_xy, attractors = load_network("data/cph.graphml")
-    delays = []
+    delays, mean_actions = [], []
     for ep in range(n_episodes):
         env = CommuteEnv(
             net=net, node_xy=node_xy, attractors=attractors,
-            n_trips=4000, n_steps=240, max_release=20, seed=100 + ep,
+            n_trips=4000, n_steps=240, max_release=20, seed=EVAL_SEEDS[ep],
             obs_mode="compact",
         )
         obs, _ = env.reset()
-        # Normalise observation using the trained VecNormalize stats.
         obs_n = vec_env.normalize_obs(np.array([obs]))[0]
         terminated = truncated = False
+        actions = []
         while not (terminated or truncated):
             action, _ = model.predict(obs_n[np.newaxis], deterministic=True)
-            obs, _, terminated, truncated, _ = env.step(int(action[0]))
+            a = int(action[0])
+            actions.append(a)
+            obs, _, terminated, truncated, _ = env.step(a)
             obs_n = vec_env.normalize_obs(np.array([obs]))[0]
         delays.append(_episode_delay_veh_hours(env, env.n_steps))
-    return float(np.mean(delays))
+        mean_actions.append(float(np.mean(actions)))
+    return float(np.mean(delays)), float(np.mean(mean_actions))
 
 
 def naive_baseline(n_episodes=3):
-    """Run release-17/step (serves all 4000 trips); return mean delay in veh-hours."""
+    """Run release-17/step on EVAL_SEEDS; return mean delay in veh-hours."""
     net, _node_ids, node_xy, attractors = load_network("data/cph.graphml")
     delays = []
     for ep in range(n_episodes):
         env = CommuteEnv(
             net=net, node_xy=node_xy, attractors=attractors,
-            n_trips=4000, n_steps=240, max_release=20, seed=ep,
+            n_trips=4000, n_steps=240, max_release=20, seed=EVAL_SEEDS[ep],
         )
         obs, _ = env.reset()
         terminated = truncated = False
@@ -175,11 +181,11 @@ if __name__ == "__main__":
     vec_env.save(VECNORM_PATH)
     print(f"Model saved to {MODEL_PATH}")
 
-    # Evaluate trained agent.
+    # Evaluate trained agent on same seeds as naive baseline.
     print("\nEvaluating trained agent (3 episodes)…")
-    trained_delay = evaluate(model, vec_env, n_episodes=3)
-    print(f"  Naive policy:   {baseline_delay:.1f} veh-hours")
-    print(f"  Trained agent:  {trained_delay:.1f} veh-hours")
+    trained_delay, mean_action = evaluate(model, vec_env, n_episodes=3)
+    print(f"  Naive policy:   {baseline_delay:.1f} veh-hours  (action=17 always)")
+    print(f"  Trained agent:  {trained_delay:.1f} veh-hours  (mean action={mean_action:.1f})")
     if trained_delay < baseline_delay:
         pct = (baseline_delay - trained_delay) / baseline_delay * 100
         print(f"  Improvement:    {pct:.1f}%")
