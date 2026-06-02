@@ -26,5 +26,6 @@ def make_test_env():
 
 
 def test_import():
+    import gymnasium as gym
     env = make_test_env()
-    assert env is not None
+    assert isinstance(env, gym.Env)
