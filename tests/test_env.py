@@ -6,7 +6,7 @@ from transport_brain.sim import Network
 from transport_brain.env import CommuteEnv
 
 
-def make_test_env():
+def make_test_env(render_mode=None):
     net = Network(
         edge_from=np.array([0, 1], dtype=np.int32),
         edge_to=np.array([1, 2], dtype=np.int32),
@@ -24,6 +24,7 @@ def make_test_env():
         n_steps=10,
         max_release=5,
         seed=42,
+        render_mode=render_mode,
     )
 
 
@@ -133,10 +134,10 @@ def test_episode_terminates():
 
 
 def test_render_rgb_array_shape():
-    env = make_test_env()
+    env = make_test_env(render_mode="rgb_array")
     env.reset()
     env.step(0)
-    frame = env.render("rgb_array")
+    frame = env.render()
     assert frame is not None
     assert frame.ndim == 3
     assert frame.shape[2] == 3

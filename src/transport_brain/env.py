@@ -156,7 +156,8 @@ class CommuteEnv(gym.Env):
         terminated = (self._t >= self.n_steps) or bool(self._sim.done and len(self._queue) == 0)
         return self._make_obs(), float(reward), terminated, False, self._make_info()
 
-    def render(self, mode: str = "human"):
+    def render(self) -> np.ndarray | None:
+        mode = self.render_mode
         if self._sim is None:
             return None
 
@@ -202,20 +203,17 @@ class CommuteEnv(gym.Env):
         if mode == "rgb_array":
             try:
                 from PIL import Image
-                buf = io.BytesIO()
-                self._fig.savefig(buf, format="png", dpi=72)
-                buf.seek(0)
-                img = np.array(Image.open(buf).convert("RGB"))
-                buf.close()
+                with io.BytesIO() as buf:
+                    self._fig.savefig(buf, format="png", dpi=72)
+                    buf.seek(0)
+                    img = np.array(Image.open(buf).convert("RGB"), dtype=np.uint8)
             except ImportError:
-                self._fig.canvas.draw()
                 w, h = self._fig.canvas.get_width_height()
                 buf_raw = np.frombuffer(self._fig.canvas.tostring_rgb(), dtype=np.uint8)
                 img = buf_raw.reshape(h, w, 3)
             return img
         elif mode == "human":
             plt.pause(0.001)
-            return None
         return None
 
     def close(self):
