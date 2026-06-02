@@ -151,7 +151,7 @@ def test_gymnasium_api_compliance():
     from gymnasium.utils.env_checker import check_env
     env = make_test_env()
     # skip_render_check because we need Agg backend for headless tests
-    check_env(env, warn=True, skip_render_check=True)
+    check_env(env, skip_render_check=True)
     env.close()
 
 
