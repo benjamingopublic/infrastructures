@@ -28,6 +28,7 @@ class CommuteEnv(gym.Env):
         max_expected_occ: float = 10.0,
         seed: int | None = None,
         render_mode: str | None = None,
+        obs_mode: str = "full",
     ) -> None:
         super().__init__()
         self.net = net
@@ -40,9 +41,11 @@ class CommuteEnv(gym.Env):
         self.max_expected_occ = float(max_expected_occ)
         self._init_seed = seed
         self.render_mode = render_mode
+        assert obs_mode in ("full", "compact"), "obs_mode must be 'full' or 'compact'"
+        self.obs_mode = obs_mode
 
         self.action_space = gym.spaces.Discrete(max_release + 1)
-        obs_dim = net.n_edges + 10
+        obs_dim = net.n_edges + 10 if obs_mode == "full" else 10
         self.observation_space = gym.spaces.Box(
             low=0.0, high=np.inf, shape=(obs_dim,), dtype=np.float32
         )
@@ -110,6 +113,12 @@ class CommuteEnv(gym.Env):
         return self._make_obs(), self._make_info()
 
     def _make_obs(self) -> np.ndarray:
+        if self.obs_mode == "compact":
+            obs = np.empty(10, dtype=np.float32)
+            obs[:8] = self._zone_counts / self.n_trips
+            obs[8] = len(self._queue) / self.n_trips
+            obs[9] = self._t / self.n_steps
+            return obs
         obs = np.empty(self.net.n_edges + 10, dtype=np.float32)
         obs[:self.net.n_edges] = self._last_occ / self.max_expected_occ
         obs[self.net.n_edges: self.net.n_edges + 8] = self._zone_counts / self.n_trips

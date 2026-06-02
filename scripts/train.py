@@ -30,7 +30,7 @@ from transport_brain.env import CommuteEnv
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-TOTAL_TIMESTEPS = 2_000_000  # ~8300 episodes; adjust up for better convergence
+TOTAL_TIMESTEPS = 500_000   # ~2000 episodes; compact obs converges quickly
 N_ENVS = 4                  # parallel envs (DummyVecEnv, no multiprocessing)
 MODEL_PATH = "outputs/ppo_commute.zip"
 VECNORM_PATH = "outputs/vecnorm.pkl"
@@ -49,6 +49,7 @@ def make_env(seed=0):
             n_steps=240,
             max_release=20,
             seed=seed,
+            obs_mode="compact",
         )
         return env
     return _init
@@ -78,6 +79,7 @@ def evaluate(model, vec_env, n_episodes=3):
         env = CommuteEnv(
             net=net, node_xy=node_xy, attractors=attractors,
             n_trips=4000, n_steps=240, max_release=20, seed=100 + ep,
+            obs_mode="compact",
         )
         obs, _ = env.reset()
         # Normalise observation using the trained VecNormalize stats.
