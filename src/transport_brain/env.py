@@ -92,9 +92,14 @@ class CommuteEnv(gym.Env):
 
         routes = compute_free_flow_routes(self.net, trips)
 
-        # 2. Assign desired departure steps (uniform over full episode).
-        # Demand rate ~17/step; max_release=20 so the agent can keep up.
-        self._desired_dep = rng.integers(0, self.n_steps, size=self.n_trips).astype(np.int32)
+        # 2. Assign desired departure steps: Gaussian rush-hour peak at n_steps//3.
+        # Peak demand >> max_release, so the agent must throttle before the peak
+        # and max-release through it — the policy that matches the demand shape
+        # beats a constant rate.
+        peak = float(self.n_steps // 3)
+        sigma = float(max(self.n_steps // 8, 1))
+        raw = rng.normal(loc=peak, scale=sigma, size=self.n_trips)
+        self._desired_dep = np.clip(np.round(raw), 0, self.n_steps - 1).astype(np.int32)
 
         # 3. Build FIFO queue sorted by desired departure step.
         order = np.argsort(self._desired_dep, kind="stable")
